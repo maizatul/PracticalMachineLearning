@@ -1,0 +1,162 @@
+---
+title: "Practical Machine Learning Project"
+author: "MAI"
+date: "December 23, 2015"
+output: html_document
+---
+
+**Background**
+==============
+
+Using devices such as Jawbone Up, Nike FuelBand, and Fitbit it is now possible to collect a large amount of data about personal activity relatively inexpensively. The goal of the project is to use data from accelerometers on the belt, forearm, arm, and dumbell of 6 participants. They were asked to perform barbell lifts correctly and incorrectly in 5 different ways. 
+We will be using data from accelerometers on the belt, forearm, arm, and dumbell of 6 participant They were asked to perform barbell lifts correctly and incorrectly in 5 different ways. The five ways are exactly according to the specification (Class A), throwing the elbows to the front (Class B), lifting the dumbbell only halfway (Class C), lowering the dumbbell only halfway (Class D) and throwing the hips to the front (Class E). Only Class A corresponds to correct performance. 
+More information is available from the website here: http://groupware.les.inf.puc-rio.br/har (see the section on the Weight Lifting Exercise Dataset).
+
+**Data Processing**
+===================
+
+**1. Load required packages** 
+
+```{r, warning=FALSE, message=FALSE}
+setwd("C:/Users/DELL 1/Documents/MachineLearning/Project1")
+
+library(caret)
+library(ggplot2)
+library(rpart)
+library(rpart.plot)
+library(kernlab)
+library(RColorBrewer)
+```
+
+2. Read the training and testing data
+
+```{r}
+trainingData <- read.csv("pml-training.csv", na.strings = c("NA", ""))
+testingData <- read.csv("pml-testing.csv",na.strings = c("NA", ""))
+set.seed(12345) 
+```
+
+3. Check the dimension of the datasets
+
+```{r}
+dim(trainingData)
+dim(testingData)
+```
+
+The training dataset has 19622 observations and 160 variables. The testing data set contains 20 observations and has the same variables as the training set. We are trying to predict the ou tcome of the variable *classe* in the training dataset.
+
+**2. Data Cleansing**
+=====================
+
+1. Remove colums with missing values
+
+```{r}
+trainingData <- trainingData[, colSums(is.na(trainingData)) == 0]
+testingData <- testingData[, colSums(is.na(testingData)) == 0]
+```
+
+Looking at the actual datasets for both training and testing, we found that the first seven predictors(colums) does not contain sufficient data for prediction purpose. Thus, these colums are removed from the process.
+
+```{r}
+training <- trainingData[, -c(1:7)]
+testing <- testingData[, -c(1:7)]
+```
+ 
+**3. Data Partitioning**
+=========================
+
+```{r}
+inTrain <- createDataPartition(training$classe, p=0.70, list = FALSE) #70% training
+validTrain <- training[inTrain, ]
+validTest <- training[-inTrain, ] #30% valid test
+```
+
+We partition the cleaned training set *training* into a training set (train, 70%) for prediction and a validation set (validTest, 30%) to compute the out-of-sample errors.
+
+**4. Prediction Algorithms for Cross Validation**
+===============================================
+
+TWO prediction algorithms will be used i.e. Recursive Partitioning and Regression Trees (RPart) and Gradient boosting (GBM). 
+
+Recursive partitioning is a statistical method for multivariable analysis. It creates a decision tree that strives to correctly classify members of the population by splitting it into sub-populations based on several dichotomous independent variables. The process is termed recursive because each sub-population may in turn be split an indefinite number of times until the splitting process terminates after a particular stopping criterion is reached (source : Wikipedia)
+
+1. Recursive Partitioning and Regression Trees (RPart) Method 
+
+```{r, warning= FALSE, message= FALSE, results='hide'} 
+modelfitRPART1 <- rpart(classe~., data=validTrain, method="class")
+```
+
+```{r}
+prp(modelfitRPART1) #illustrating the decision tree 
+
+```
+
+```{r, warning= FALSE, message= FALSE, results='hide'}
+modelfitRPART <- train(classe~., data=validTrain, method="rpart")
+modelfitRPART$finalModel
+predictionsRPART <- predict(modelfitRPART, newdata = validTest)
+# results are hide
+```
+
+We can now use caret's confusionMatrix() function applied on validTest (the test set) to get an idea of the accuracy of RPart
+
+```{r}
+confusionMatrix(predictionsRPART, validTest$classe)
+```
+
+Rpart predicted just 49.63% (the out of sample error would be 1 - 0.4963 = 50.37%) of accuracy and the kappa value is just 0.3425 , which is very low and may not be a good prediction model. 
+
+2. GBM Method 
+
+Gradient boosting or GBM is a machine learning technique for regression and classification problems, which produces a prediction model in the form of an ensemble of weak prediction models, typically decision trees. It builds the model in a stage-wise fashion like other boosting methods do, and it generalizes them by allowing optimization of an arbitrary differentiable loss function (source : Wikipedia). 
+
+```{r, , warning= FALSE, message= FALSE, results='hide'} 
+modelFitGBM1 <- train(classe ~., data = validTrain, method="gbm")
+modelFitGBM1$finalModel
+predictionsGBM1 <- predict(modelFitGBM1, newdata = validTest)
+# results are hide
+```
+
+Finding the accuracy of GBM approach :
+
+```{r}
+confusionMatrix(predictionsGBM1, validTest$classe)
+```
+For this dataset, GBM method predicted better model than RPart method. It is shown in the accuracy of the results where GBM predicted up to 95.99% (the out of sample error would be 1 - 0.9599 = 4.01% ) with the kappa value of 0.9493.
+
+**5. Discussion**
+==================
+
+Both of the accuracy indicators above depict that the GBM model in its current setting is quite accurate and useful in making out of sample predictions. This model shows a significant improvement over RPart model and hence is chosen as the prediction model used for submission of results.
+
+**6. Application**
+===================
+Applying the machine learning algorithm to each of the 20 test cases in the testing data set :
+
+1. Creating files to execute the test cases (i.e. testingData)
+
+```{r}
+predictionsGBM2 <- predict(modelFitGBM1, testingData)
+```
+
+2. Use provided code snippets from Coursera site
+
+```{r}
+setwd("C:/Users/DELL 1/Documents/MachineLearning/Project1/Practical-Machine-Learning/TextFileSubmit1")
+pml_write_files = function(x){
+  n = length(x)
+  for(i in 1:n){
+    filename = paste0("problem_id_",i,".txt")
+    write.table(x[i],file=filename,quote=FALSE,row.names=FALSE,col.names=FALSE)
+  }
+
+}
+pml_write_files(predictionsGBM2)
+
+```
+
+**7. Conclusion**
+=================
+
+In this assignment, GBM algorithm which is trained on a subset of data using less than 20% of the covariates has accurately predicted the classification of 20 observations data. Other algorithm that would predicted accurate result would be Random Forest.I have tried to run this algorithm on my laptop and it took almost 8 hours to produce a result, which is assumed due to the limited capability of the processor, and also the complexicity of the algorithm.
+
